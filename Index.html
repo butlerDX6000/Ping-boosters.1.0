@@ -1,0 +1,328 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080d19">
+<title>PingBoost</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 25px 18px;
+  background: #080d19;
+  color: white;
+  font-family: Arial, sans-serif;
+}
+
+header {
+  text-align: center;
+  margin: 20px 0 30px;
+}
+
+.logo {
+  font-size: 30px;
+  font-weight: 900;
+  color: #42cfff;
+}
+
+.subtitle {
+  color: #8292ac;
+  font-size: 11px;
+  letter-spacing: 3px;
+  margin-top: 8px;
+}
+
+.card {
+  background: #111c30;
+  border: 1px solid #1e3554;
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 15px;
+}
+
+.main {
+  text-align: center;
+}
+
+.label {
+  color: #8292ac;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+#ping {
+  font-size: 75px;
+  font-weight: 900;
+  margin: 15px 0 0;
+  color: white;
+}
+
+.unit {
+  color: #8292ac;
+}
+
+#status {
+  color: #35e6a1;
+  margin-top: 20px;
+  font-size: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stat {
+  background: #111c30;
+  padding: 18px;
+  border-radius: 16px;
+}
+
+.value {
+  font-size: 24px;
+  font-weight: bold;
+  margin-top: 12px;
+}
+
+button {
+  width: 100%;
+  border: none;
+  border-radius: 15px;
+  padding: 19px;
+  background: #167cff;
+  color: white;
+  font-size: 15px;
+  font-weight: 900;
+  margin-top: 20px;
+}
+
+button.stop {
+  background: #d94b65;
+}
+
+#history {
+  display: flex;
+  height: 110px;
+  align-items: end;
+  gap: 5px;
+}
+
+.bar {
+  flex: 1;
+  min-width: 3px;
+  border-radius: 5px;
+  background: #35e6a1;
+}
+
+footer {
+  text-align: center;
+  color: #64738a;
+  font-size: 11px;
+  margin-top: 25px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="logo">⚡ PINGBOOST</div>
+  <div class="subtitle">GAMING NETWORK MONITOR</div>
+</header>
+
+<div class="card main">
+  <div class="label">RESPONSE TIME</div>
+  <div id="ping">--</div>
+  <div class="unit">milliseconds</div>
+  <div id="status">● READY</div>
+</div>
+
+<div class="grid">
+
+  <div class="stat">
+    <div class="label">JITTER</div>
+    <div class="value" id="jitter">--</div>
+  </div>
+
+  <div class="stat">
+    <div class="label">FAILED TESTS</div>
+    <div class="value" id="loss">0%</div>
+  </div>
+
+  <div class="stat">
+    <div class="label">TOTAL TESTS</div>
+    <div class="value" id="tests">0</div>
+  </div>
+
+  <div class="stat">
+    <div class="label">CONNECTION</div>
+    <div class="value" id="connection">IDLE</div>
+  </div>
+
+</div>
+
+<div class="card" style="margin-top:15px">
+  <div class="label" style="margin-bottom:20px">
+    LATENCY HISTORY
+  </div>
+  <div id="history"></div>
+</div>
+
+<button id="start" onclick="toggleTest()">
+  START PING TEST
+</button>
+
+<footer>
+  PINGBOOST v1.0 • BUILT FOR GAMERS
+  <p>HTTPS response-time test, not Roblox server ping.</p>
+</footer>
+
+<script>
+let running = false;
+let timer = null;
+let previous = null;
+let tests = 0;
+let failures = 0;
+let values = [];
+
+const endpoint =
+  "https://www.cloudflare.com/cdn-cgi/trace";
+
+async function testPing() {
+  if (!running) return;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(), 5000
+  );
+
+  const start = performance.now();
+
+  try {
+    const response = await fetch(
+      endpoint + "?t=" + Date.now(),
+      {
+        cache: "no-store",
+        signal: controller.signal
+      }
+    );
+
+    if (!response.ok) throw new Error("HTTP error");
+
+    const result = Math.round(
+      performance.now() - start
+    );
+
+    document.getElementById("ping").textContent = result;
+
+    document.getElementById("ping").style.color =
+      result < 60 ? "#35e6a1" :
+      result < 120 ? "#ffd166" : "#ff647c";
+
+    if (previous !== null) {
+      document.getElementById("jitter").textContent =
+        Math.abs(result - previous) + " ms";
+    }
+
+    previous = result;
+    values.push(result);
+    if (values.length > 20) values.shift();
+
+    drawHistory();
+
+    document.getElementById("status").textContent =
+      "● CONNECTED";
+
+    document.getElementById("status").style.color =
+      "#35e6a1";
+
+  } catch (error) {
+    failures++;
+
+    document.getElementById("status").textContent =
+      "● CONNECTION ERROR";
+
+    document.getElementById("status").style.color =
+      "#ff647c";
+
+    values.push(null);
+    if (values.length > 20) values.shift();
+
+    drawHistory();
+
+  } finally {
+    clearTimeout(timeout);
+    tests++;
+
+    document.getElementById("tests").textContent = tests;
+
+    document.getElementById("loss").textContent =
+      Math.round(failures / tests * 100) + "%";
+  }
+}
+
+function drawHistory() {
+  const area = document.getElementById("history");
+  area.innerHTML = "";
+
+  values.forEach(value => {
+    const bar = document.createElement("div");
+    bar.className = "bar";
+
+    bar.style.height = value === null
+      ? "8px"
+      : Math.max(8, Math.min(value / 3, 100)) + "px";
+
+    bar.style.background = value === null
+      ? "#ff647c"
+      : value < 120 ? "#35e6a1" : "#ffd166";
+
+    area.appendChild(bar);
+  });
+}
+
+function toggleTest() {
+  running = !running;
+
+  const button = document.getElementById("start");
+
+  if (running) {
+    previous = null;
+    tests = 0;
+    failures = 0;
+    values = [];
+
+    document.getElementById("tests").textContent = "0";
+    document.getElementById("loss").textContent = "0%";
+    document.getElementById("jitter").textContent = "--";
+    document.getElementById("ping").textContent = "--";
+    document.getElementById("status").textContent = "● CONNECTING";
+    document.getElementById("connection").textContent = "ACTIVE";
+
+    button.textContent = "STOP TESTING";
+    button.classList.add("stop");
+
+    testPing();
+    timer = setInterval(testPing, 2000);
+
+  } else {
+    clearInterval(timer);
+
+    document.getElementById("connection").textContent = "IDLE";
+    document.getElementById("status").textContent = "● STOPPED";
+
+    button.textContent = "START PING TEST";
+    button.classList.remove("stop");
+  }
+}
+</script>
+
+</body>
+</html>
